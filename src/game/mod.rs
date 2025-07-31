@@ -1,5 +1,4 @@
-use crate::rendering::Renderer;
-pub mod input;
+use crate::{input, rendering::FrontEnd};
 
 #[derive(Debug, Clone)]
 pub struct GameState {
@@ -24,24 +23,22 @@ impl GameState {
     }
 }
 
-pub struct Game<R: Renderer, I: input::InputProvider> {
+pub struct Game<F: FrontEnd> {
     pub state: GameState,
-    pub input_provider: I,
-    pub renderer: R,
+    pub front_end: F,
 }
 
-impl<R: Renderer, I: input::InputProvider> Game<R, I> {
+impl<F: FrontEnd> Game<F> {
     pub fn new(state: GameState) -> Self {
         Game {
             state,
-            input_provider: I::default(),
-            renderer: R::default(),
+            front_end: F::default(),
         }
     }
 
     pub fn run(&mut self) {
         loop {
-            if let Some(event) = self.input_provider.get_input() {
+            if let Some(event) = self.front_end.get_input() {
                 let (mut player_row, mut player_col) = self.state.player_position;
 
                 match event {
@@ -97,7 +94,7 @@ impl<R: Renderer, I: input::InputProvider> Game<R, I> {
                 }
             }
 
-            self.renderer.render(&self.state);
+            self.front_end.render(&self.state);
         }
     }
 }

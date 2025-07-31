@@ -1,11 +1,7 @@
-use sokoban_rs::{
-    game::{self, input::CliInputProvider},
-    rendering::cli::CliRenderer,
-};
+use sokoban_rs::{game, rendering::cli::CliFrontEnd};
 
 fn main() {
-    let mut game = game::Game::<CliRenderer, CliInputProvider>::new(game::GameState::from_file(
-        "levels/mission1.txt".into(),
-    ));
+    let mut game =
+        game::Game::<CliFrontEnd>::new(game::GameState::from_file("levels/mission1.txt".into()));
     game.run();
 }

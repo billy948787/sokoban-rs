@@ -1,7 +1,8 @@
-use crate::game::GameState;
+use crate::{game::GameState, input::InputEvent};
 
 pub mod cli;
 
-pub trait Renderer: Default {
-    fn render(&self, state: &GameState);
+pub trait FrontEnd: Default {
+    fn render(&mut self, state: &GameState);
+    fn get_input(&self) -> Option<InputEvent>;
 }
