@@ -170,13 +170,20 @@ impl<F: FrontEnd> Game<F> {
                             && !self.state.walls.contains(&(next_row, next_col))
                             && !self.state.box_positions.contains(&(next_row, next_col))
                         {
+                            self.prev_states.push(self.state.clone());
+                            self.after_states.clear();
                             // move the box
                             self.state.box_positions[box_index] = (next_row, next_col);
+                            self.state.player_position = (player_row, player_col);
                         } else {
                             continue; // Invalid move, skip updating player position
                         }
+                    } else {
+                        self.prev_states.push(self.state.clone());
+                        self.after_states.clear();
+                        // Just move the player
+                        self.state.player_position = (player_row, player_col);
                     }
-                    self.state.player_position = (player_row, player_col);
                 }
             }
         }
