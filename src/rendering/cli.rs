@@ -1,9 +1,7 @@
 use ratatui::{
-    crossterm::{
-        event::{self, Event, KeyCode},
-        style::Stylize,
-    },
+    crossterm::event::{self, Event, KeyCode},
     layout::Rect,
+    style::Stylize,
     symbols::{block, border},
     text::{Line, Span, ToSpan},
     widgets::{Block, Paragraph, Table},
@@ -38,25 +36,26 @@ impl FrontEnd for CliFrontEnd {
                 let mut game_table: Vec<Line> = Vec::with_capacity(map_rows as usize);
 
                 for r in 0..map_rows {
-                    let mut row_span: Vec<Span> = Vec::with_capacity(map_cols as usize);
+                    let mut row_span = Vec::with_capacity(map_cols as usize);
                     for c in 0..map_cols {
                         let pos = (r, c);
-                        let char = if pos == state.player_position {
-                            'P'
+                        let symbol = if pos == state.player_position {
+                            "P".blue().bold()
                         } else if state.box_positions.contains(&pos) {
                             if state.target_positions.contains(&pos) {
-                                '*'
+                                "*".on_red()
                             } else {
-                                '$'
+                                "$".yellow()
                             }
                         } else if state.target_positions.contains(&pos) {
-                            '.'
+                            ".".red()
                         } else if state.walls.contains(&pos) {
-                            '#'
+                            "#".white()
                         } else {
-                            ' '
+                            " ".white()
                         };
-                        row_span.push(Span::from(char.to_string()));
+
+                        row_span.push(symbol);
                     }
                     game_table.push(Line::from(row_span));
                 }
@@ -97,6 +96,7 @@ impl FrontEnd for CliFrontEnd {
 impl Default for CliFrontEnd {
     fn default() -> Self {
         let terminal = ratatui::init();
+
         CliFrontEnd { terminal }
     }
 }

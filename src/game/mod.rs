@@ -32,7 +32,12 @@ impl GameState {
         let mut target_positions = Vec::new();
         let mut walls = Vec::new();
 
+        let mut rows = 0;
+        let mut cols = 0;
+
         for (r, line_content) in lines.enumerate() {
+            rows += 1;
+            cols = (line_content.len() as i32).max(cols);
             for (c, char) in line_content.chars().enumerate() {
                 let pos = (r as i32, c as i32);
                 match char {
