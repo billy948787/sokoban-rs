@@ -4,5 +4,8 @@ pub enum InputEvent {
     MoveDown,
     MoveLeft,
     MoveRight,
+    Undo,
+    Redo,
+    Restart,
     Quit,
 }

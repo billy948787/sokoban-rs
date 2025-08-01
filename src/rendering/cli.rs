@@ -18,7 +18,13 @@ impl FrontEnd for CliFrontEnd {
         self.terminal
             .draw(|frame| {
                 let title = Line::raw("Sokoban");
-                let instructions = Line::raw(" Move <WASD> or <Arrow Keys> Quit<Q> or <Esc>");
+                let instructions = {
+                    if state.is_solved() {
+                        Line::raw("You solved the puzzle! Press 'r' to restart or 'q' to quit.")
+                    } else {
+                        Line::raw("Use arrow keys or WASD to move, 'z' to undo, 'x' to redo, 'r' to restart, 'q' to quit.")
+                    }
+                };
                 let block = Block::bordered()
                     .title(title.centered())
                     .title_bottom(instructions.centered())
@@ -85,6 +91,9 @@ impl FrontEnd for CliFrontEnd {
                     KeyCode::Left | KeyCode::Char('a') => return Some(InputEvent::MoveLeft),
                     KeyCode::Right | KeyCode::Char('d') => return Some(InputEvent::MoveRight),
                     KeyCode::Esc | KeyCode::Char('q') => return Some(InputEvent::Quit),
+                    KeyCode::Char('z') => return Some(InputEvent::Undo),
+                    KeyCode::Char('x') => return Some(InputEvent::Redo),
+                    KeyCode::Char('r') => return Some(InputEvent::Restart),
                     _ => {}
                 }
             }

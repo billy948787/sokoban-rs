@@ -1,4 +1,7 @@
-use crate::{input, rendering::FrontEnd};
+use crate::{
+    input::{self, InputEvent},
+    rendering::FrontEnd,
+};
 
 #[derive(Debug, Clone)]
 pub struct GameState {
@@ -59,11 +62,26 @@ impl GameState {
             map_size: (rows, cols),
         }
     }
+
+    fn is_deadlock(&self) -> bool {
+        // Check if the player is in a deadlock position
+
+        false
+    }
+
+    pub fn is_solved(&self) -> bool {
+        // Check if all boxes are on target positions
+        self.box_positions
+            .iter()
+            .all(|pos| self.target_positions.contains(pos))
+    }
 }
 
 pub struct Game<F: FrontEnd> {
     pub state: GameState,
     pub front_end: F,
+    prev_states: Vec<GameState>,
+    after_states: Vec<GameState>,
 }
 
 impl<F: FrontEnd> Game<F> {
@@ -71,6 +89,8 @@ impl<F: FrontEnd> Game<F> {
         Game {
             state,
             front_end: F::default(),
+            prev_states: Vec::new(),
+            after_states: Vec::new(),
         }
     }
 
@@ -92,10 +112,37 @@ impl<F: FrontEnd> Game<F> {
                     input::InputEvent::MoveRight => {
                         player_col += 1;
                     }
+                    input::InputEvent::Undo => {
+                        // Implement undo logic
+                        if let Some(last_state) = self.prev_states.pop() {
+                            self.state = last_state.clone();
+                            self.after_states.push(last_state);
+                            continue;
+                        }
+                    }
+                    input::InputEvent::Redo => {
+                        // Implement redo logic
+                        if let Some(next_state) = self.after_states.pop() {
+                            self.state = next_state.clone();
+                            self.prev_states.push(next_state);
+                            continue;
+                        }
+                    }
+                    input::InputEvent::Restart => {
+                        // Reset the game state to the initial state
+                        if let Some(initial_state) = self.prev_states.first() {
+                            self.state = initial_state.clone();
+                            self.after_states.clear();
+                            continue;
+                        }
+                    }
                     input::InputEvent::Quit => {
                         break; // Exit the game loop
                     }
                 }
+
+                // Save the current state before making a move
+                self.prev_states.push(self.state.clone());
 
                 // Check if the new position is valid
                 if player_row >= 0
