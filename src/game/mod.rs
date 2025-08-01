@@ -11,14 +11,47 @@ pub struct GameState {
 
 impl GameState {
     pub fn from_file(file_path: std::path::PathBuf) -> Self {
-        // Read the file and parse the game state
-        // For now, we'll just return a default state
+        let content = std::fs::read_to_string(file_path).expect("Failed to read game state file");
+        let mut lines = content.lines();
+
+        let (rows, cols) = {
+            let first_line = lines
+                .next()
+                .expect("File is empty or missing map size line");
+            let mut dims = first_line
+                .split_whitespace()
+                .map(|s| s.parse::<i32>().expect("Invalid map dimension"));
+            (
+                dims.next().expect("Missing map rows"),
+                dims.next().expect("Missing map cols"),
+            )
+        };
+
+        let mut player_position = (0, 0);
+        let mut box_positions = Vec::new();
+        let mut target_positions = Vec::new();
+        let mut walls = Vec::new();
+
+        for (r, line_content) in lines.enumerate() {
+            for (c, char) in line_content.chars().enumerate() {
+                let pos = (r as i32, c as i32);
+                match char {
+                    '/' => walls.push(pos),
+                    '0' => player_position = pos,
+                    '1' => box_positions.push(pos),
+                    '2' => target_positions.push(pos),
+                    '-' => { /* Road, do nothing */ }
+                    _ => { /* Ignore other characters */ }
+                }
+            }
+        }
+
         GameState {
-            player_position: (0, 0),
-            box_positions: Vec::new(),
-            target_positions: Vec::new(),
-            walls: Vec::new(),
-            map_size: (10, 10),
+            player_position,
+            box_positions,
+            target_positions,
+            walls,
+            map_size: (rows, cols),
         }
     }
 }
