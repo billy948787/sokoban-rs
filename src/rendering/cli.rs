@@ -94,7 +94,7 @@ impl FrontEnd for CliFrontEnd {
                     KeyCode::Char('z') => return Some(InputEvent::Undo),
                     KeyCode::Char('x') => return Some(InputEvent::Redo),
                     KeyCode::Char('r') => return Some(InputEvent::Restart),
-                    _ => {}
+                    _ => return None,
                 }
             }
         }

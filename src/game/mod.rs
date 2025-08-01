@@ -96,6 +96,7 @@ impl<F: FrontEnd> Game<F> {
 
     pub fn run(&mut self) {
         loop {
+            self.front_end.render(&self.state);
             if let Some(event) = self.front_end.get_input() {
                 let (mut player_row, mut player_col) = self.state.player_position;
 
@@ -115,35 +116,32 @@ impl<F: FrontEnd> Game<F> {
                     input::InputEvent::Undo => {
                         // Implement undo logic
                         if let Some(last_state) = self.prev_states.pop() {
-                            self.state = last_state.clone();
-                            self.after_states.push(last_state);
-                            continue;
+                            self.after_states.push(self.state.clone());
+                            self.state = last_state;
                         }
+                        continue;
                     }
                     input::InputEvent::Redo => {
                         // Implement redo logic
                         if let Some(next_state) = self.after_states.pop() {
-                            self.state = next_state.clone();
-                            self.prev_states.push(next_state);
-                            continue;
+                            self.prev_states.push(self.state.clone());
+                            self.state = next_state;
                         }
+                        continue;
                     }
                     input::InputEvent::Restart => {
                         // Reset the game state to the initial state
                         if let Some(initial_state) = self.prev_states.first() {
                             self.state = initial_state.clone();
+                            self.prev_states.clear();
                             self.after_states.clear();
-                            continue;
                         }
+                        continue;
                     }
                     input::InputEvent::Quit => {
                         break; // Exit the game loop
                     }
                 }
-
-                // Save the current state before making a move
-                self.prev_states.push(self.state.clone());
-
                 // Check if the new position is valid
                 if player_row >= 0
                     && player_row < self.state.map_size.0
@@ -151,6 +149,9 @@ impl<F: FrontEnd> Game<F> {
                     && player_col < self.state.map_size.1
                     && !self.state.walls.contains(&(player_row, player_col))
                 {
+                    // Save the current state before making a move
+                    self.after_states.clear();
+                    self.prev_states.push(self.state.clone());
                     // check if the new position has a box
                     if let Some(box_index) = self
                         .state
@@ -178,8 +179,6 @@ impl<F: FrontEnd> Game<F> {
                     self.state.player_position = (player_row, player_col);
                 }
             }
-
-            self.front_end.render(&self.state);
         }
     }
 }
