@@ -43,6 +43,7 @@ impl FrontEnd for CliFrontEnd {
 
                 let mut game_table: Vec<Line> = Vec::with_capacity(map_rows as usize);
 
+
                 for r in 0..map_rows {
                     let mut row_span = Vec::with_capacity(map_cols as usize);
                     for c in 0..map_cols {
@@ -59,6 +60,9 @@ impl FrontEnd for CliFrontEnd {
                             ".".red()
                         } else if state.walls.contains(&pos) {
                             "#".white()
+
+                        } else if state.route.contains(&pos) {
+                            "O".green()
                         } else if state.dead_pos.contains(&pos) {
                             "X".red()
                         } else {

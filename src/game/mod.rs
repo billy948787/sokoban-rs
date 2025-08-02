@@ -4,6 +4,8 @@ use std::{
     thread,
 };
 
+use rand::random_range;
+
 use crate::{
     input::{self},
     rendering::FrontEnd,
@@ -17,6 +19,7 @@ pub struct GameState {
     pub walls: Vec<(i32, i32)>,
     pub map_size: (i32, i32),
     pub dead_pos: Vec<(i32, i32)>,
+    pub route: Vec<(i32, i32)>,
 }
 
 impl GameState {
@@ -56,9 +59,44 @@ impl GameState {
             walls,
             map_size: (rows, cols),
             dead_pos: Vec::new(),
+            route: Vec::new(),
         };
 
         state.generate_deadlock_positions();
+
+        state.route = state.find_route_to_target(state.box_positions[0], state.target_positions[0]);
+
+        state
+    }
+
+    pub fn random_generate(rows: i32, cols: i32) -> Self {
+        let player_position = (random_range(0..rows), random_range(0..cols));
+        let box_positions = vec![
+            (random_range(0..rows), random_range(0..cols)),
+            (random_range(0..rows), random_range(0..cols)),
+        ];
+        let target_positions = vec![
+            (random_range(0..rows), random_range(0..cols)),
+            (random_range(0..rows), random_range(0..cols)),
+        ];
+        let walls = vec![
+            (random_range(0..rows), random_range(0..cols)),
+            (random_range(0..rows), random_range(0..cols)),
+        ];
+
+        let mut state = GameState {
+            player_position,
+            box_positions,
+            target_positions,
+            walls,
+            map_size: (rows, cols),
+            dead_pos: Vec::new(),
+            route: Vec::new(),
+        };
+
+        state.generate_deadlock_positions();
+
+        state.route = state.find_route_to_target(state.box_positions[0], state.target_positions[0]);
 
         state
     }
@@ -113,11 +151,6 @@ impl GameState {
                         .contains(&(player_prev_pos_row, player_prev_pos_col))
                 {
                     queue.push_back((box_prev_pos_row, box_prev_pos_col));
-                } else {
-                    // If the box is against a wall, mark it as a deadlock position
-                    if !deadlock_positions.contains(&(box_prev_pos_row, box_prev_pos_col)) {
-                        deadlock_positions.push((box_prev_pos_row, box_prev_pos_col));
-                    }
                 }
             }
         }
@@ -131,6 +164,63 @@ impl GameState {
         }
 
         self.dead_pos = deadlock_positions;
+    }
+    pub fn find_route_to_target(&self, start: (i32, i32), target: (i32, i32)) -> Vec<(i32, i32)> {
+        let mut route = Vec::new();
+        let mut visited = HashMap::<(i32, i32), bool>::new();
+        let (map_rows, map_cols) = self.map_size;
+
+        route.push(start);
+
+        while let Some(current) = route.last() {
+            if *current == target {
+                break; // Reached the target
+            }
+
+            let (current_row, current_col) = *current;
+
+            visited.insert(*current, true);
+
+            let mut found_next = false;
+
+            for (dr, dc) in &[(0, 1), (1, 0), (0, -1), (-1, 0)] {
+                let (next_row, next_col) = (current_row + dr, current_col + dc);
+                let (demand_player_row, demand_player_col) = (current_row - dr, current_col - dc);
+
+                if self.dead_pos.contains(&(next_row, next_col)) {
+                    continue;
+                }
+
+                if next_row < 0
+                    || next_row >= map_rows
+                    || next_col < 0
+                    || next_col >= map_cols
+                    || demand_player_row < 0
+                    || demand_player_row >= map_rows
+                    || demand_player_col < 0
+                    || demand_player_col >= map_cols
+                    || self.walls.contains(&(next_row, next_col))
+                    || self.walls.contains(&(demand_player_row, demand_player_col))
+                    || visited.contains_key(&(next_row, next_col))
+                {
+                    continue; // Out of bounds or wall or already visited
+                }
+                found_next = true;
+                route.push((next_row, next_col));
+                break;
+            }
+
+            if !found_next {
+                route.pop(); // Backtrack if no next position found
+            }
+        }
+        route
+    }
+
+    fn check_valid(&self) -> bool {
+        for box_pos in &self.box_positions {}
+
+        true
     }
 
     pub fn is_deadlock(&self) -> bool {
@@ -224,9 +314,6 @@ impl<F: FrontEnd> Game<F> {
                     && player_col < self.state.map_size.1
                     && !self.state.walls.contains(&(player_row, player_col))
                 {
-                    // Save the current state before making a move
-                    self.after_states.clear();
-                    self.prev_states.push(self.state.clone());
                     // check if the new position has a box
                     if let Some(box_index) = self
                         .state
@@ -250,6 +337,11 @@ impl<F: FrontEnd> Game<F> {
                             // move the box
                             self.state.box_positions[box_index] = (next_row, next_col);
                             self.state.player_position = (player_row, player_col);
+
+                            self.state.route = self.state.find_route_to_target(
+                                self.state.box_positions[0],
+                                self.state.target_positions[0],
+                            );
                         } else {
                             continue; // Invalid move, skip updating player position
                         }
@@ -258,6 +350,10 @@ impl<F: FrontEnd> Game<F> {
                         self.after_states.clear();
                         // Just move the player
                         self.state.player_position = (player_row, player_col);
+                        self.state.route = self.state.find_route_to_target(
+                            self.state.box_positions[0],
+                            self.state.target_positions[0],
+                        );
                     }
                 }
             }
