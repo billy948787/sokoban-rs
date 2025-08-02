@@ -64,7 +64,7 @@ impl GameState {
 
         state.generate_deadlock_positions();
 
-        state.route = state.find_route_to_target(state.box_positions[0], state.target_positions[0]);
+        state.generate_route();
 
         state
     }
@@ -96,7 +96,7 @@ impl GameState {
 
         state.generate_deadlock_positions();
 
-        state.route = state.find_route_to_target(state.box_positions[0], state.target_positions[0]);
+        state.generate_route();
 
         state
     }
@@ -164,6 +164,21 @@ impl GameState {
         }
 
         self.dead_pos = deadlock_positions;
+    }
+
+    pub fn generate_route(&mut self) {
+        self.route.clear();
+        for pos in &self.box_positions {
+            for target in &self.target_positions {
+                if self.box_positions.contains(target) {
+                    continue; // Skip if the box is already on the target
+                }
+                let route = self.find_route_to_target(*pos, *target);
+                if !route.is_empty() {
+                    self.route.extend(route);
+                }
+            }
+        }
     }
     pub fn find_route_to_target(&self, start: (i32, i32), target: (i32, i32)) -> Vec<(i32, i32)> {
         let mut route = Vec::new();
@@ -338,10 +353,7 @@ impl<F: FrontEnd> Game<F> {
                             self.state.box_positions[box_index] = (next_row, next_col);
                             self.state.player_position = (player_row, player_col);
 
-                            self.state.route = self.state.find_route_to_target(
-                                self.state.box_positions[0],
-                                self.state.target_positions[0],
-                            );
+                            self.state.generate_route();
                         } else {
                             continue; // Invalid move, skip updating player position
                         }
@@ -350,10 +362,7 @@ impl<F: FrontEnd> Game<F> {
                         self.after_states.clear();
                         // Just move the player
                         self.state.player_position = (player_row, player_col);
-                        self.state.route = self.state.find_route_to_target(
-                            self.state.box_positions[0],
-                            self.state.target_positions[0],
-                        );
+                        self.state.generate_route();
                     }
                 }
             }
