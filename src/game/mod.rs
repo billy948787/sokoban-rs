@@ -1,5 +1,11 @@
+use std::{
+    collections::{HashMap, VecDeque},
+    sync::Mutex,
+    thread,
+};
+
 use crate::{
-    input::{self, InputEvent},
+    input::{self},
     rendering::FrontEnd,
 };
 
@@ -10,25 +16,14 @@ pub struct GameState {
     pub target_positions: Vec<(i32, i32)>,
     pub walls: Vec<(i32, i32)>,
     pub map_size: (i32, i32),
+    pub dead_pos: Vec<(i32, i32)>,
 }
 
 impl GameState {
     pub fn from_file(file_path: std::path::PathBuf) -> Self {
         let content = std::fs::read_to_string(file_path).expect("Failed to read game state file");
-        let mut lines = content.lines();
 
-        let (rows, cols) = {
-            let first_line = lines
-                .next()
-                .expect("File is empty or missing map size line");
-            let mut dims = first_line
-                .split_whitespace()
-                .map(|s| s.parse::<i32>().expect("Invalid map dimension"));
-            (
-                dims.next().expect("Missing map rows"),
-                dims.next().expect("Missing map cols"),
-            )
-        };
+        let lines = content.lines();
 
         let mut player_position = (0, 0);
         let mut box_positions = Vec::new();
@@ -38,7 +33,7 @@ impl GameState {
         let mut rows = 0;
         let mut cols = 0;
 
-        for (r, line_content) in lines.enumerate() {
+        for (r, line_content) in lines.skip(1).enumerate() {
             rows += 1;
             cols = (line_content.len() as i32).max(cols);
             for (c, char) in line_content.chars().enumerate() {
@@ -54,17 +49,97 @@ impl GameState {
             }
         }
 
-        GameState {
+        let mut state = GameState {
             player_position,
             box_positions,
             target_positions,
             walls,
             map_size: (rows, cols),
-        }
+            dead_pos: Vec::new(),
+        };
+
+        state.generate_deadlock_positions();
+
+        state
     }
 
-    fn is_deadlock(&self) -> bool {
+    fn generate_deadlock_positions(&mut self) {
+        let mut pos_map =
+            HashMap::<(i32, i32), bool>::from_iter(self.walls.iter().map(|&pos| (pos, true)));
+        let mut deadlock_positions = Vec::<(i32, i32)>::from_iter(self.walls.iter().cloned());
+        let mut queue = VecDeque::<(i32, i32)>::new();
+
+        for &pos in &self.target_positions {
+            if !pos_map.contains_key(&pos) {
+                queue.push_back(pos);
+            }
+            pos_map.insert(pos, true);
+        }
+
+        let (map_rows, map_cols) = self.map_size;
+
+        while let Some(live_pos) = queue.pop_front() {
+            let (r, c) = live_pos;
+
+            if !pos_map.contains_key(&(r, c)) {
+                // Mark as processed
+                pos_map.insert((r, c), true);
+            }
+
+            for (dr, dc) in &[(0, 1), (1, 0), (0, -1), (-1, 0)] {
+                let (box_prev_pos_row, box_prev_pos_col) = (r + dr, c + dc);
+                let (player_prev_pos_row, player_prev_pos_col) =
+                    (box_prev_pos_row + dr, box_prev_pos_col + dc);
+
+                if box_prev_pos_row < 0
+                    || box_prev_pos_row >= map_rows
+                    || box_prev_pos_col < 0
+                    || box_prev_pos_col >= map_cols
+                    || player_prev_pos_row < 0
+                    || player_prev_pos_row >= map_rows
+                    || player_prev_pos_col < 0
+                    || player_prev_pos_col >= map_cols
+                {
+                    continue; // Out of bounds
+                }
+
+                if let Some(true) = pos_map.get(&(box_prev_pos_row, box_prev_pos_col)) {
+                    continue; // Already processed
+                }
+
+                if !self.walls.contains(&(box_prev_pos_row, box_prev_pos_col))
+                    && !self
+                        .walls
+                        .contains(&(player_prev_pos_row, player_prev_pos_col))
+                {
+                    queue.push_back((box_prev_pos_row, box_prev_pos_col));
+                } else {
+                    // If the box is against a wall, mark it as a deadlock position
+                    if !deadlock_positions.contains(&(box_prev_pos_row, box_prev_pos_col)) {
+                        deadlock_positions.push((box_prev_pos_row, box_prev_pos_col));
+                    }
+                }
+            }
+        }
+
+        for r in 0..map_rows {
+            for c in 0..map_cols {
+                if !pos_map.contains_key(&(r, c)) {
+                    deadlock_positions.push((r, c)); // Add all unprocessed positions
+                }
+            }
+        }
+
+        self.dead_pos = deadlock_positions;
+    }
+
+    pub fn is_deadlock(&self) -> bool {
         // Check if the player is in a deadlock position
+        for pos in &self.box_positions {
+            if self.dead_pos.contains(pos) {
+                return true; // Found a deadlock position
+            }
+        }
 
         false
     }

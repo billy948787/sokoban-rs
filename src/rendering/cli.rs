@@ -21,6 +21,8 @@ impl FrontEnd for CliFrontEnd {
                 let instructions = {
                     if state.is_solved() {
                         Line::raw("You solved the puzzle! Press 'r' to restart or 'q' to quit.")
+                    } else if state.is_deadlock() {
+                        Line::raw("Deadlock detected! Press 'r' to restart or 'q' to quit.")
                     } else {
                         Line::raw("Use arrow keys or WASD to move, 'z' to undo, 'x' to redo, 'r' to restart, 'q' to quit.")
                     }
@@ -57,6 +59,8 @@ impl FrontEnd for CliFrontEnd {
                             ".".red()
                         } else if state.walls.contains(&pos) {
                             "#".white()
+                        } else if state.dead_pos.contains(&pos) {
+                            "X".red()
                         } else {
                             " ".white()
                         };
