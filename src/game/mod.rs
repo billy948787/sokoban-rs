@@ -1,5 +1,5 @@
 use std::{
-    collections::{HashMap, VecDeque},
+    collections::{HashMap, HashSet, VecDeque},
     sync::Mutex,
     thread,
 };
@@ -19,7 +19,8 @@ pub struct GameState {
     pub walls: Vec<(i32, i32)>,
     pub map_size: (i32, i32),
     pub dead_pos: Vec<(i32, i32)>,
-    pub route: Vec<(i32, i32)>,
+    pub box_route: Vec<(i32, i32)>,
+    pub player_route: Vec<(i32, i32)>,
 }
 
 impl GameState {
@@ -59,7 +60,8 @@ impl GameState {
             walls,
             map_size: (rows, cols),
             dead_pos: Vec::new(),
-            route: Vec::new(),
+            box_route: Vec::new(),
+            player_route: Vec::new(),
         };
 
         state.generate_deadlock_positions();
@@ -91,7 +93,8 @@ impl GameState {
             walls,
             map_size: (rows, cols),
             dead_pos: Vec::new(),
-            route: Vec::new(),
+            box_route: Vec::new(),
+            player_route: Vec::new(),
         };
 
         state.generate_deadlock_positions();
@@ -167,36 +170,63 @@ impl GameState {
     }
 
     pub fn generate_route(&mut self) {
-        self.route.clear();
+        self.box_route.clear();
         for pos in &self.box_positions {
             for target in &self.target_positions {
                 if self.box_positions.contains(target) {
                     continue; // Skip if the box is already on the target
                 }
-                let route = self.find_route_to_target(*pos, *target);
+                let route = self.box_find_route_to_target(*pos, *target);
                 if !route.is_empty() {
-                    self.route.extend(route);
+                    self.box_route.extend(route);
                 }
             }
         }
+
+        self.player_route.clear();
+
+        if self.box_route.len() > 1 {
+            let (first_box_pos_row, first_box_pos_col) = self.box_route[0];
+            let (second_box_pos_row, second_box_pos_col) = self.box_route[1];
+
+            let (dr, dc) = (
+                first_box_pos_row - second_box_pos_row,
+                first_box_pos_col - second_box_pos_col,
+            );
+
+            let (player_target_row, player_target_col) =
+                (first_box_pos_row + dr, first_box_pos_col + dc);
+
+            let mut player_route = self.player_find_route_to_target(
+                self.player_position,
+                (player_target_row, player_target_col),
+            );
+
+            player_route.push((first_box_pos_row, first_box_pos_col));
+
+            self.player_route = player_route;
+        }
     }
-    pub fn find_route_to_target(&self, start: (i32, i32), target: (i32, i32)) -> Vec<(i32, i32)> {
+
+    pub fn box_find_route_to_target(
+        &self,
+        start: (i32, i32),
+        target: (i32, i32),
+    ) -> Vec<(i32, i32)> {
         let mut route = Vec::new();
-        let mut visited = HashMap::<(i32, i32), bool>::new();
+        let mut visited = HashSet::<(i32, i32)>::new();
         let (map_rows, map_cols) = self.map_size;
+        let mut queue = VecDeque::<(i32, i32)>::new();
+        let mut parent_map = HashMap::<(i32, i32), (i32, i32)>::new();
 
-        route.push(start);
+        queue.push_back(start);
 
-        while let Some(current) = route.last() {
-            if *current == target {
-                break; // Reached the target
+        while let Some((current_row, current_col)) = queue.pop_front() {
+            visited.insert((current_row, current_col));
+
+            if (current_row, current_col) == target {
+                break;
             }
-
-            let (current_row, current_col) = *current;
-
-            visited.insert(*current, true);
-
-            let mut found_next = false;
 
             for (dr, dc) in &[(0, 1), (1, 0), (0, -1), (-1, 0)] {
                 let (next_row, next_col) = (current_row + dr, current_col + dc);
@@ -216,24 +246,96 @@ impl GameState {
                     || demand_player_col >= map_cols
                     || self.walls.contains(&(next_row, next_col))
                     || self.walls.contains(&(demand_player_row, demand_player_col))
-                    || visited.contains_key(&(next_row, next_col))
+                    || visited.contains(&(next_row, next_col))
                 {
-                    continue; // Out of bounds or wall or already visited
+                    continue; // Out of bounds or blocked by wall
                 }
-                found_next = true;
-                route.push((next_row, next_col));
+
+                queue.push_back((next_row, next_col));
+                parent_map.insert((next_row, next_col), (current_row, current_col));
+            }
+        }
+
+        let mut now_target = (target.0, target.1);
+
+        while let Some((current_row, current_col)) = parent_map.get(&now_target) {
+            route.push((*current_row, *current_col));
+            if (*current_row, *current_col) == start {
+                break; // Reached the start position
+            }
+            now_target = (*current_row, *current_col);
+        }
+
+        route.reverse(); // Reverse the route to get it from start to target
+        if !route.is_empty() {
+            route.push(target); // Ensure the target is included in the route
+        }
+
+        route
+    }
+
+    fn player_find_route_to_target(
+        &self,
+        start: (i32, i32),
+        target: (i32, i32),
+    ) -> Vec<(i32, i32)> {
+        let mut route = Vec::new();
+        let mut visited = HashSet::<(i32, i32)>::new();
+        let (map_rows, map_cols) = self.map_size;
+        let mut queue = VecDeque::<(i32, i32)>::new();
+        let mut parent_map = HashMap::<(i32, i32), (i32, i32)>::new();
+
+        queue.push_back(start);
+
+        while let Some((current_row, current_col)) = queue.pop_front() {
+            visited.insert((current_row, current_col));
+
+            if (current_row, current_col) == target {
                 break;
             }
 
-            if !found_next {
-                route.pop(); // Backtrack if no next position found
+            for (dr, dc) in &[(0, 1), (1, 0), (0, -1), (-1, 0)] {
+                let (next_row, next_col) = (current_row + dr, current_col + dc);
+
+                if next_row < 0
+                    || next_row >= map_rows
+                    || next_col < 0
+                    || next_col >= map_cols
+                    || self.walls.contains(&(next_row, next_col))
+                    || self.box_positions.contains(&(next_row, next_col))
+                    || visited.contains(&(next_row, next_col))
+                {
+                    continue; // Out of bounds or blocked by wall
+                }
+
+                queue.push_back((next_row, next_col));
+                parent_map.insert((next_row, next_col), (current_row, current_col));
             }
         }
+
+        let mut now_target = (target.0, target.1);
+
+        while let Some((current_row, current_col)) = parent_map.get(&now_target) {
+            route.push((*current_row, *current_col));
+            if (*current_row, *current_col) == start {
+                break; // Reached the start position
+            }
+            now_target = (*current_row, *current_col);
+        }
+
+        route.reverse(); // Reverse the route to get it from start to target
+
+        if !route.is_empty() {
+            route.push(target); // Ensure the target is included in the route
+        }
+
         route
     }
 
     fn check_valid(&self) -> bool {
-        for box_pos in &self.box_positions {}
+        if self.box_route.is_empty() {
+            return false; // No route found
+        }
 
         true
     }
@@ -276,96 +378,115 @@ impl<F: FrontEnd> Game<F> {
 
     pub fn run(&mut self) {
         loop {
-            self.front_end.render(&self.state);
-            if let Some(event) = self.front_end.get_input() {
-                let (mut player_row, mut player_col) = self.state.player_position;
-
-                match event {
-                    input::InputEvent::MoveUp => {
-                        player_row -= 1;
-                    }
-                    input::InputEvent::MoveDown => {
-                        player_row += 1;
-                    }
-                    input::InputEvent::MoveLeft => {
-                        player_col -= 1;
-                    }
-                    input::InputEvent::MoveRight => {
-                        player_col += 1;
-                    }
-                    input::InputEvent::Undo => {
-                        // Implement undo logic
-                        if let Some(last_state) = self.prev_states.pop() {
-                            self.after_states.push(self.state.clone());
-                            self.state = last_state;
-                        }
-                        continue;
-                    }
-                    input::InputEvent::Redo => {
-                        // Implement redo logic
-                        if let Some(next_state) = self.after_states.pop() {
-                            self.prev_states.push(self.state.clone());
-                            self.state = next_state;
-                        }
-                        continue;
-                    }
-                    input::InputEvent::Restart => {
-                        // Reset the game state to the initial state
-                        if let Some(initial_state) = self.prev_states.first() {
-                            self.state = initial_state.clone();
-                            self.prev_states.clear();
-                            self.after_states.clear();
-                        }
-                        continue;
-                    }
-                    input::InputEvent::Quit => {
-                        break; // Exit the game loop
-                    }
-                }
-                // Check if the new position is valid
-                if player_row >= 0
-                    && player_row < self.state.map_size.0
-                    && player_col >= 0
-                    && player_col < self.state.map_size.1
-                    && !self.state.walls.contains(&(player_row, player_col))
-                {
-                    // check if the new position has a box
-                    if let Some(box_index) = self
-                        .state
+            if !self.state.is_solved() {
+                self.state.generate_route();
+                for pos in &self.state.player_route {
+                    self.state
                         .box_positions
-                        .iter()
-                        .position(|&pos| pos == (player_row, player_col))
-                    {
-                        // if it has a box, check if the next position is valid
-                        let next_row = player_row + (player_row - self.state.player_position.0);
-                        let next_col = player_col + (player_col - self.state.player_position.1);
-
-                        if next_row >= 0
-                            && next_row < self.state.map_size.0
-                            && next_col >= 0
-                            && next_col < self.state.map_size.1
-                            && !self.state.walls.contains(&(next_row, next_col))
-                            && !self.state.box_positions.contains(&(next_row, next_col))
-                        {
-                            self.prev_states.push(self.state.clone());
-                            self.after_states.clear();
-                            // move the box
-                            self.state.box_positions[box_index] = (next_row, next_col);
-                            self.state.player_position = (player_row, player_col);
-
-                            self.state.generate_route();
-                        } else {
-                            continue; // Invalid move, skip updating player position
-                        }
-                    } else {
-                        self.prev_states.push(self.state.clone());
-                        self.after_states.clear();
-                        // Just move the player
-                        self.state.player_position = (player_row, player_col);
-                        self.state.generate_route();
-                    }
+                        .iter_mut()
+                        .find(|box_pos| **box_pos == *pos)
+                        .map(|box_pos| {
+                            let (dr, dc) = (
+                                pos.0 - self.state.player_position.0,
+                                pos.1 - self.state.player_position.1,
+                            );
+                            box_pos.0 += dr;
+                            box_pos.1 += dc;
+                        });
+                    self.state.player_position = *pos;
+                    self.front_end.render(&self.state);
+                    thread::sleep(std::time::Duration::from_millis(100));
                 }
             }
+            // if let Some(event) = self.front_end.get_input() {
+            //     let (mut player_row, mut player_col) = self.state.player_position;
+
+            //     match event {
+            //         input::InputEvent::MoveUp => {
+            //             player_row -= 1;
+            //         }
+            //         input::InputEvent::MoveDown => {
+            //             player_row += 1;
+            //         }
+            //         input::InputEvent::MoveLeft => {
+            //             player_col -= 1;
+            //         }
+            //         input::InputEvent::MoveRight => {
+            //             player_col += 1;
+            //         }
+            //         input::InputEvent::Undo => {
+            //             // Implement undo logic
+            //             if let Some(last_state) = self.prev_states.pop() {
+            //                 self.after_states.push(self.state.clone());
+            //                 self.state = last_state;
+            //             }
+            //             continue;
+            //         }
+            //         input::InputEvent::Redo => {
+            //             // Implement redo logic
+            //             if let Some(next_state) = self.after_states.pop() {
+            //                 self.prev_states.push(self.state.clone());
+            //                 self.state = next_state;
+            //             }
+            //             continue;
+            //         }
+            //         input::InputEvent::Restart => {
+            //             // Reset the game state to the initial state
+            //             if let Some(initial_state) = self.prev_states.first() {
+            //                 self.state = initial_state.clone();
+            //                 self.prev_states.clear();
+            //                 self.after_states.clear();
+            //             }
+            //             continue;
+            //         }
+            //         input::InputEvent::Quit => {
+            //             break; // Exit the game loop
+            //         }
+            //     }
+            //     // Check if the new position is valid
+            //     if player_row >= 0
+            //         && player_row < self.state.map_size.0
+            //         && player_col >= 0
+            //         && player_col < self.state.map_size.1
+            //         && !self.state.walls.contains(&(player_row, player_col))
+            //     {
+            //         // check if the new position has a box
+            //         if let Some(box_index) = self
+            //             .state
+            //             .box_positions
+            //             .iter()
+            //             .position(|&pos| pos == (player_row, player_col))
+            //         {
+            //             // if it has a box, check if the next position is valid
+            //             let next_row = player_row + (player_row - self.state.player_position.0);
+            //             let next_col = player_col + (player_col - self.state.player_position.1);
+
+            //             if next_row >= 0
+            //                 && next_row < self.state.map_size.0
+            //                 && next_col >= 0
+            //                 && next_col < self.state.map_size.1
+            //                 && !self.state.walls.contains(&(next_row, next_col))
+            //                 && !self.state.box_positions.contains(&(next_row, next_col))
+            //             {
+            //                 self.prev_states.push(self.state.clone());
+            //                 self.after_states.clear();
+            //                 // move the box
+            //                 self.state.box_positions[box_index] = (next_row, next_col);
+            //                 self.state.player_position = (player_row, player_col);
+
+            //                 self.state.generate_route();
+            //             } else {
+            //                 continue; // Invalid move, skip updating player position
+            //             }
+            //         } else {
+            //             self.prev_states.push(self.state.clone());
+            //             self.after_states.clear();
+            //             // Just move the player
+            //             self.state.player_position = (player_row, player_col);
+            //             self.state.generate_route();
+            //         }
+            //     }
+            // }
         }
     }
 }

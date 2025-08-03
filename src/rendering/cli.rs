@@ -61,7 +61,7 @@ impl FrontEnd for CliFrontEnd {
                         } else if state.walls.contains(&pos) {
                             "#".white()
 
-                        } else if state.route.contains(&pos) {
+                        } else if state.box_route.contains(&pos) {
                             "O".green()
                         } else if state.dead_pos.contains(&pos) {
                             "X".red()
