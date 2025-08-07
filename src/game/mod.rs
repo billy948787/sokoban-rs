@@ -180,12 +180,22 @@ impl GameState {
             let (dir_row, dir_col) = direction;
 
             // Check if the box can be pushed in the given direction
-            let new_box_pos = (box_row + dir_row, box_col + dir_col);
-            let player_pos = (box_row - dir_row, box_col - dir_col);
+            let (new_box_row, new_box_col) = (box_row + dir_row, box_col + dir_col);
+            let (player_row, player_col) = (box_row - dir_row, box_col - dir_col);
 
-            state.walls.contains(&new_box_pos)
-                || state.walls.contains(&player_pos)
-                || state.dead_pos.contains(&new_box_pos)
+            let mut surrounded_by_walls_count = 0;
+
+            for (dr, dc) in &[(0, 1), (1, 0), (0, -1), (-1, 0)] {
+                let (adj_row, adj_col) = (player_row + dr, player_col + dc);
+                if state.walls.contains(&(adj_row, adj_col)) {
+                    surrounded_by_walls_count += 1;
+                }
+            }
+
+            state.walls.contains(&(new_box_row, new_box_col))
+                || state.walls.contains(&(player_row, player_col))
+                || state.dead_pos.contains(&(new_box_row, new_box_col))
+                || surrounded_by_walls_count >= 3
         };
 
         let player_condition_fn = |state: &GameState,
@@ -239,72 +249,6 @@ impl GameState {
         }
     }
 
-    pub fn box_find_route_to_target(
-        &self,
-        start: (i32, i32),
-        target: (i32, i32),
-    ) -> Vec<(i32, i32)> {
-        let mut route = Vec::new();
-        let mut visited = HashSet::<(i32, i32)>::new();
-        let (map_rows, map_cols) = self.map_size;
-        let mut queue = VecDeque::<(i32, i32)>::new();
-        let mut parent_map = HashMap::<(i32, i32), (i32, i32)>::new();
-
-        queue.push_back(start);
-
-        while let Some((current_row, current_col)) = queue.pop_front() {
-            visited.insert((current_row, current_col));
-
-            if (current_row, current_col) == target {
-                break;
-            }
-
-            for (dr, dc) in &[(0, 1), (1, 0), (0, -1), (-1, 0)] {
-                let (next_row, next_col) = (current_row + dr, current_col + dc);
-                let (demand_player_row, demand_player_col) = (current_row - dr, current_col - dc);
-
-                if self.dead_pos.contains(&(next_row, next_col)) {
-                    continue;
-                }
-
-                if next_row < 0
-                    || next_row >= map_rows
-                    || next_col < 0
-                    || next_col >= map_cols
-                    || demand_player_row < 0
-                    || demand_player_row >= map_rows
-                    || demand_player_col < 0
-                    || demand_player_col >= map_cols
-                    || self.walls.contains(&(next_row, next_col))
-                    || self.walls.contains(&(demand_player_row, demand_player_col))
-                    || visited.contains(&(next_row, next_col))
-                {
-                    continue; // Out of bounds or blocked by wall
-                }
-
-                queue.push_back((next_row, next_col));
-                parent_map.insert((next_row, next_col), (current_row, current_col));
-            }
-        }
-
-        let mut now_target = (target.0, target.1);
-
-        while let Some((current_row, current_col)) = parent_map.get(&now_target) {
-            route.push((*current_row, *current_col));
-            if (*current_row, *current_col) == start {
-                break; // Reached the start position
-            }
-            now_target = (*current_row, *current_col);
-        }
-
-        route.reverse(); // Reverse the route to get it from start to target
-        if !route.is_empty() {
-            route.push(target); // Ensure the target is included in the route
-        }
-
-        route
-    }
-
     fn find_route_to_target(
         &self,
         start: (i32, i32),
@@ -339,64 +283,6 @@ impl GameState {
                         (&current_row, &current_col),
                         (dr, dc),
                     )
-                    || visited.contains(&(next_row, next_col))
-                {
-                    continue; // Out of bounds or blocked by wall
-                }
-
-                queue.push_back((next_row, next_col));
-                parent_map.insert((next_row, next_col), (current_row, current_col));
-            }
-        }
-
-        let mut now_target = (target.0, target.1);
-
-        while let Some((current_row, current_col)) = parent_map.get(&now_target) {
-            route.push((*current_row, *current_col));
-            if (*current_row, *current_col) == start {
-                break; // Reached the start position
-            }
-            now_target = (*current_row, *current_col);
-        }
-
-        route.reverse(); // Reverse the route to get it from start to target
-
-        if !route.is_empty() {
-            route.push(target); // Ensure the target is included in the route
-        }
-
-        route
-    }
-
-    fn player_find_route_to_target(
-        &self,
-        start: (i32, i32),
-        target: (i32, i32),
-    ) -> Vec<(i32, i32)> {
-        let mut route = Vec::new();
-        let mut visited = HashSet::<(i32, i32)>::new();
-        let (map_rows, map_cols) = self.map_size;
-        let mut queue = VecDeque::<(i32, i32)>::new();
-        let mut parent_map = HashMap::<(i32, i32), (i32, i32)>::new();
-
-        queue.push_back(start);
-
-        while let Some((current_row, current_col)) = queue.pop_front() {
-            visited.insert((current_row, current_col));
-
-            if (current_row, current_col) == target {
-                break;
-            }
-
-            for (dr, dc) in &[(0, 1), (1, 0), (0, -1), (-1, 0)] {
-                let (next_row, next_col) = (current_row + dr, current_col + dc);
-
-                if next_row < 0
-                    || next_row >= map_rows
-                    || next_col < 0
-                    || next_col >= map_cols
-                    || self.walls.contains(&(next_row, next_col))
-                    || self.box_positions.contains(&(next_row, next_col))
                     || visited.contains(&(next_row, next_col))
                 {
                     continue; // Out of bounds or blocked by wall
