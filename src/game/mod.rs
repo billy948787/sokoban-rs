@@ -171,12 +171,42 @@ impl GameState {
 
     pub fn generate_route(&mut self) {
         self.box_route.clear();
+
+        let box_condition_fn = |state: &GameState,
+                                (map_rows, map_cols): (&i32, &i32),
+                                box_pos: (&i32, &i32),
+                                direction: (&i32, &i32)| {
+            let (box_row, box_col) = box_pos;
+            let (dir_row, dir_col) = direction;
+
+            // Check if the box can be pushed in the given direction
+            let new_box_pos = (box_row + dir_row, box_col + dir_col);
+            let player_pos = (box_row - dir_row, box_col - dir_col);
+
+            state.walls.contains(&new_box_pos)
+                || state.walls.contains(&player_pos)
+                || state.dead_pos.contains(&new_box_pos)
+        };
+
+        let player_condition_fn = |state: &GameState,
+                                   (map_rows, map_cols): (&i32, &i32),
+                                   player_pos: (&i32, &i32),
+                                   direction: (&i32, &i32)| {
+            let (player_row, player_col) = player_pos;
+            let (dir_row, dir_col) = direction;
+
+            // Check if the player can move in the given direction
+            let new_player_pos = (player_row + dir_row, player_col + dir_col);
+
+            state.walls.contains(&new_player_pos) || state.box_positions.contains(&new_player_pos)
+        };
+
         for pos in &self.box_positions {
             for target in &self.target_positions {
                 if self.box_positions.contains(target) {
                     continue; // Skip if the box is already on the target
                 }
-                let route = self.box_find_route_to_target(*pos, *target);
+                let route = self.find_route_to_target(*pos, *target, box_condition_fn);
                 if !route.is_empty() {
                     self.box_route.extend(route);
                 }
@@ -197,9 +227,10 @@ impl GameState {
             let (player_target_row, player_target_col) =
                 (first_box_pos_row + dr, first_box_pos_col + dc);
 
-            let mut player_route = self.player_find_route_to_target(
+            let mut player_route = self.find_route_to_target(
                 self.player_position,
                 (player_target_row, player_target_col),
+                player_condition_fn,
             );
 
             player_route.push((first_box_pos_row, first_box_pos_col));
@@ -267,6 +298,69 @@ impl GameState {
         }
 
         route.reverse(); // Reverse the route to get it from start to target
+        if !route.is_empty() {
+            route.push(target); // Ensure the target is included in the route
+        }
+
+        route
+    }
+
+    fn find_route_to_target(
+        &self,
+        start: (i32, i32),
+        target: (i32, i32),
+        condition_fn: impl Fn(&GameState, (&i32, &i32), (&i32, &i32), (&i32, &i32)) -> bool,
+    ) -> Vec<(i32, i32)> {
+        let mut route = Vec::new();
+        let mut visited = HashSet::<(i32, i32)>::new();
+        let (map_rows, map_cols) = self.map_size;
+        let mut queue = VecDeque::<(i32, i32)>::new();
+        let mut parent_map = HashMap::<(i32, i32), (i32, i32)>::new();
+
+        queue.push_back(start);
+
+        while let Some((current_row, current_col)) = queue.pop_front() {
+            visited.insert((current_row, current_col));
+
+            if (current_row, current_col) == target {
+                break;
+            }
+
+            for (dr, dc) in &[(0, 1), (1, 0), (0, -1), (-1, 0)] {
+                let (next_row, next_col) = (current_row + dr, current_col + dc);
+
+                if next_row < 0
+                    || next_row >= map_rows
+                    || next_col < 0
+                    || next_col >= map_cols
+                    || condition_fn(
+                        self,
+                        (&map_rows, &map_cols),
+                        (&current_row, &current_col),
+                        (dr, dc),
+                    )
+                    || visited.contains(&(next_row, next_col))
+                {
+                    continue; // Out of bounds or blocked by wall
+                }
+
+                queue.push_back((next_row, next_col));
+                parent_map.insert((next_row, next_col), (current_row, current_col));
+            }
+        }
+
+        let mut now_target = (target.0, target.1);
+
+        while let Some((current_row, current_col)) = parent_map.get(&now_target) {
+            route.push((*current_row, *current_col));
+            if (*current_row, *current_col) == start {
+                break; // Reached the start position
+            }
+            now_target = (*current_row, *current_col);
+        }
+
+        route.reverse(); // Reverse the route to get it from start to target
+
         if !route.is_empty() {
             route.push(target); // Ensure the target is included in the route
         }
